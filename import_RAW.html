@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leer JSON y Mostrar Gráficos</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f9f9f9;
+        }
+        h1 {
+            color: #333;
+        }
+        input[type="file"] {
+            margin-bottom: 20px;
+        }
+        .chart-container {
+            margin-top: 20px;
+            max-width: 500px; /* Ajusta el ancho máximo de las gráficas */
+            margin-left: auto; /* Centra las gráficas horizontalmente */
+            margin-right: auto; /* Centra las gráficas horizontalmente */
+        }
+        canvas {
+            max-width: 100%; /* Ajusta el ancho máximo del canvas para que se adapte */
+            height: auto; /* Permite que la altura se ajuste automáticamente según el ancho */
+        }
+        #jsonContent.error {
+            color: red;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>Leer JSON y Mostrar Gráficos</h1>
+    <input type="file" id="fileInput" accept=".json">
+    <select id="nameSelect">
+        <option value="">Mostrar todo</option>
+    </select>
+    <button onclick="resetFilters()">Resetear Filtros</button>
+    <div id="jsonContent"></div>
+
+    <script>
+        let originalJson = null; // Variable global para almacenar el JSON original
+
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const json = JSON.parse(e.target.result);
+                        if (Array.isArray(json)) {
+                            originalJson = json; // Almacenar el JSON original
+                            displayData(json);
+                            populateNameSelect(json);
+                            document.getElementById('jsonContent').classList.remove('error');
+                        } else {
+                            throw new Error("El JSON no es un array.");
+                        }
+                    } catch (error) {
+                        document.getElementById('jsonContent').textContent = 'Error: ' + error.message;
+                        document.getElementById('jsonContent').classList.add('error');
+                    }
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        document.getElementById('nameSelect').addEventListener('change', function() {
+            filterData();
+        });
+
+        function resetFilters() {
+            document.getElementById('nameSelect').selectedIndex = 0; // Resetear el valor del select
+            displayData(originalJson); // Usar el JSON original
+        }
+
+        function filterData() {
+            const selectedName = document.getElementById('nameSelect').value;
+            let filteredJson = originalJson; // Usar el JSON original
+
+            if (selectedName) {
+                filteredJson = originalJson.filter(item => item['Nombre y apellidos'] === selectedName);
+            }
+
+            displayData(filteredJson); // Si selectedName está vacío, mostrar todos los datos
+        }
+
+        function populateNameSelect(json) {
+            const select = document.getElementById('nameSelect');
+            select.innerHTML = '<option value="">Mostrar todo</option>';
+            const names = json.map(item => item['Nombre y apellidos']);
+            const uniqueNames = [...new Set(names)]; // Eliminar duplicados
+            uniqueNames.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                select.appendChild(option);
+            });
+        }
+
+        function displayData(json) {
+            const contentDiv = document.getElementById('jsonContent');
+            contentDiv.innerHTML = ''; // Limpiar contenido anterior
+
+            // Extraer preguntas del primer objeto
+            const questions = Object.keys(json[0]).filter(key => key !== 'Marca temporal' && key !== 'Nombre y apellidos');
+
+            questions.forEach(question => {
+                const questionDiv = document.createElement('div');
+                questionDiv.className = 'chart-container';
+                questionDiv.innerHTML = `<h2>${question}</h2><canvas id="${question.replace(/\s+/g, '')}" width="400" height="200"></canvas>`;
+                contentDiv.appendChild(questionDiv);
+
+                const ctx = document.getElementById(question.replace(/\s+/g, '')).getContext('2d');
+
+                // Contar ocurrencias de cada respuesta
+                const answerCounts = {};
+                json.forEach(item => {
+                    if (item.hasOwnProperty(question)) {
+                        const answer = item[question];
+                        if (answerCounts[answer]) {
+                            answerCounts[answer]++;
+                        } else {
+                            answerCounts[answer] = 1;
+                        }
+                    }
+                });
+
+                // Preparar datos para el gráfico
+                const labels = Object.keys(answerCounts);
+                const data = Object.values(answerCounts).map(count => (count / json.length * 100).toFixed(2));
+
+                const backgroundColor = 'rgba(255, 99, 132, 0.8)'; // Color rojo para todas las barras
+                const borderColor = 'rgba(255, 99, 132, 1)'; // Color rojo para el borde de todas las barras
+
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Porcentaje',
+                            data: data,
+                            backgroundColor: backgroundColor,
+                            borderColor: borderColor,
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) {
+                                        return value + "%";
+                                    },
+                                    color: '#000'
+                                },
+                                grid: {
+                                    color: 'rgba(0, 0, 0, 0.4)',
+                                    lineWidth: 1
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    color: '#000'
+                                },
+                                grid: {
+                                    color: 'rgba(0, 0, 0, 0.4)',
+                                    lineWidth: 1
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    color: '#000'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: question,
+                                color: '#000'
+                            }
+                        }
+                    }
+                });
+            });
+
+            contentDiv.setAttribute('data-original-json', JSON.stringify(json)); // Usar data-original-json para guardar el JSON original
+        }
+    </script>
+</body>
+</html>
